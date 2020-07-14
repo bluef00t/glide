@@ -15,16 +15,17 @@
         ellipse(250, 200, 10, 10);
         ellipse(153, 200, 10, 10);*/
 
-        //Main game variables
+        //Main game variables 
         var levelNum = 0;
         var side = 400;//EVERYTHING SCALES TO GAME SIZE
         size(side, side); 
         frameRate(30);
         //drawing control variables
         var wallWidth = side/80;
-        var meSpeed = 8;
+        var meSpeed = side/50;
 
         var unit = side/10 + wallWidth;
+        var levelDone = false;
         
 
         //enum of directions, helpful for readable code
@@ -36,7 +37,8 @@
             RIGHT: "right"
         }
 
-        //attempt at getting keypressed to work
+        //keeping track of when keypressed
+        //(thank you u/GoSubRoutine from r/processing!)
         var KEYS_RANGE = 0500;
         var keysDown = [];
         var keyPressed = function() {
@@ -63,7 +65,7 @@
         var me = {
             x:side/2,
             y:side/2,
-            width: unit*0.8,
+            width: unit*0.75,
             direction: moving.NO,
             draw: function(){
                 fill(255, 255, 0);
@@ -79,21 +81,33 @@
                 ellipse(this.x - this.width/4, this.y - this.width/8, this.width/10, this.width/10);
                 ellipse(this.x + this.width/4, this.y - this.width/8, this.width/10, this.width/10);
             },
+            touchesEnd: function(level){
+                if(dist(me.x, me.y, level.finishX + unit/2, level.finishY + unit/2) < this.width/2){
+                    return true;
+                }
+                return false;
+            },
             handleCollisions: function(level){
                 //if touching wall, stop moving (and move to a position where no longer touching the wall, to enable future movement)
                 for(var i = 0; i<level.walls.length; i++){
                     var thisWall = level.walls[i];
-                    if(thisWall.touchesMe()){
-                        //println(thisWall.touchesMe());
-                        switch(this.direction){//move backwards one step to avoid clipping wall
-                            case moving.UP: me.y = me.y +meSpeed; break;
-                             case moving.DOWN: me.y = me.y -meSpeed; break;
-                              case moving.LEFT: me.x = me.x +meSpeed; break;
-                               case moving.RIGHT: me.x = me.x -meSpeed; break;
+                    while(thisWall.touchesMe()){
+                        var tolerance = 2; //how close to get to the wall
+                        switch(this.direction){//inch away until fixed
+                            case moving.UP: me.y = me.y +tolerance; break;
+                             case moving.DOWN: me.y = me.y -tolerance; break;
+                              case moving.LEFT: me.x = me.x +tolerance; break;
+                               case moving.RIGHT: me.x = me.x -tolerance; break;
                         }
-                        this.direction = moving.NO;
-                        break;
+                        if(!thisWall.touchesMe()){//the last time, stop moving
+                            this.direction = moving.NO;
+                            break;
+                        }
                     }
+                }
+                //if touching finish line, trigger win condition
+                if(me.touchesEnd(level)){
+                    println("hooray!");
                 }
             }
         }
@@ -106,21 +120,22 @@
 
             //returns boolean: true if smiley is touching wall
             this.touchesMe = function(){
-                var r = wallWidth/2 + me.width/2;//radius of smiley
+                var heightR = this.height/2 + me.width/2;
+                var widthR = wallWidth/2 + me.width/2;
                 if (this.isHoriz){//calculation of distance from wall horizontal
-                    if (me.x < this.x + this.height/2 &&
-                        me.x > this.x - this.height/2){//if inside the X plane of the line
+                    if (me.x < this.x + heightR &&
+                        me.x > this.x - heightR){//if inside the X plane of the line
                         //println("within x  of horizontal line");
                         //println(dist(0, me.y, 0, this.y) + ", " + r);
-                        if (dist(0, me.y, 0, this.y) < r){
+                        if (dist(0, me.y, 0, this.y) < widthR){
                             return true;
                         }
                         return false;
                     }
                 }else{//calculation of distance from wall vertical
-                     if (me.y < this.y + this.height/2 &&
-                        me.y > this.y - this.height/2){
-                        if (dist(me.x, 0, this.x, 0) < r) {
+                     if (me.y < this.y + heightR &&
+                        me.y > this.y - heightR){
+                        if (dist(me.x, 0, this.x, 0) < widthR) {
                             return true;
                         }
                         return false;
@@ -168,7 +183,24 @@
                 rectMode(CORNER);
                 fill(0,0,0);
                 rect(this.finishX, this.finishY, unit, unit, 1);
-                
+                pushMatrix();
+                translate(this.finishX + unit/2, this.finishY + unit/2); // center of the star
+                fill(255, 255,0);
+                //star shape with help from https://stackoverflow.com/questions/53799599/how-to-draw-a-star-shape-in-processingjs
+                beginShape();
+                var n = unit/100;//scale bc scale() wasn't playing nice
+                vertex(0, -50*n);
+                vertex(15*n, -17*n);
+                vertex(47*n, -15*n);//right point
+                vertex(22*n, 7*n);
+                vertex(29*n, 40*n);//bottom right point
+                vertex(0, 22*n);
+                vertex(-29*n, 40*n);
+                vertex(-22*n, 7*n);
+                vertex(-47*n, -15*n);
+                vertex(-14*n, -20*n);
+                endShape(CLOSE);
+                popMatrix();
             }
         }
 
@@ -189,7 +221,6 @@
 
         //every frame drawn here
         draw = function(){
-            L1.draw();
             //println(keyCode + ", " + isDown(keyCode));
             if (keyIsDown(keyCode) && me.direction === moving.NO){
                 switch (keyCode){
@@ -200,12 +231,17 @@
                 }
                 //console.log(me.direction);
             }
-            me.handleCollisions(L1);
             switch(me.direction){
                 case moving.UP: me.y = me.y -meSpeed; break;
                  case moving.DOWN: me.y = me.y +meSpeed; break;
                   case moving.LEFT: me.x = me.x -meSpeed; break;
                    case moving.RIGHT: me.x = me.x +meSpeed; break;
+            }
+            if (!levelDone){
+                L1.draw();
+                me.handleCollisions(L1);
+            }else{
+
             }
             me.draw();
         }
